@@ -1,0 +1,25 @@
+Network Forensics Platform
+
+An advanced cybersecurity and digital forensics platform designed for automated network traffic analysis, threat detection, IOC extraction, and forensic investigation. The system supports PCAP/log analysis, threat intelligence integration, MITRE ATT&CK mapping, risk scoring, session reconstruction, and real-time monitoring using Python and Flask.
+
+Key Features
+PCAP & log analysis
+Threat intelligence integration
+IOC extraction
+Risk scoring engine
+Real-time monitoring dashboard
+MITRE ATT&CK mapping
+Threat hunting
+Automated forensic reports
+VirusTotal & Hybrid Analysis support
+Tech Stack
+Python
+Flask
+Scapy
+Pandas
+Flask-SocketIO
+Plotly
+ReportLab
+Purpose
+
+This project was developed to automate network forensic investigations and help analyze suspicious network activities for cybersecurity research and educational purposes.
