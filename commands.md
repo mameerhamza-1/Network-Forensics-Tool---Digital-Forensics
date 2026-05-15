@@ -10,6 +10,7 @@ py -3.12 -m venv .venv312
 # Linux/macOS
 source .venv312/bin/activate
 
+# Run
 pip install -r requirements.txt
 
 python app.py
