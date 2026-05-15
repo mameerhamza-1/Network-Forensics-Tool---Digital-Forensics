@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetForensics — Dashboard</title>
+<style>
+/* ── Base ──────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#080f1e;color:#cbd5e1;min-height:100vh}
+a{color:#60a5fa;text-decoration:none}
+a:hover{color:#93c5fd}
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;
+  background:#0d1b2e;border-bottom:1px solid #1e3a5f;position:sticky;top:0;z-index:100}
+.topbar-logo{font-size:1.2rem;font-weight:700;color:#fff;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.topbar-logo span{color:#38bdf8}
+.topbar-nav{display:flex;gap:20px;font-size:.85rem}
+.topbar-nav a{color:#94a3b8;padding:6px 12px;border-radius:6px;transition:all .2s}
+.topbar-nav a:hover,.topbar-nav a.active{background:#1e3a5f;color:#fff}
+
+.page{padding:24px 28px;max-width:1600px;margin:0 auto}
+.section-title{font-size:.7rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:#475569;margin-bottom:12px;padding-left:2px}
+
+/* ── Stat cards ──────────────────────────────────────────────────────── */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:24px}
+.card{background:#0d1b2e;border:1px solid #1e3a5f;border-radius:14px;padding:18px 20px;position:relative;overflow:hidden}
+.card-icon{font-size:1.6rem;margin-bottom:8px;display:block}
+.card-label{font-size:.72rem;color:#64748b;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px}
+.card-value{font-size:1.9rem;font-weight:700;color:#e2e8f0;line-height:1}
+.card-sub{font-size:.72rem;color:#475569;margin-top:4px}
+.card.danger{border-color:#7f1d1d} .card.danger .card-value{color:#f87171}
+.card.warning{border-color:#78350f} .card.warning .card-value{color:#fbbf24}
+.card.success{border-color:#14532d} .card.success .card-value{color:#4ade80}
+.card.purple{border-color:#4c1d95} .card.purple .card-value{color:#c084fc}
+.card.blue{border-color:#1e3a8a} .card.blue .card-value{color:#60a5fa}
+.card::after{content:'';position:absolute;top:-30px;right:-30px;width:90px;height:90px;
+  border-radius:50%;background:rgba(255,255,255,.02)}
+
+/* ── Risk badge ──────────────────────────────────────────────────────── */
+.risk-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
+.risk-Critical{background:#7f1d1d;color:#fca5a5}
+.risk-High    {background:#78350f;color:#fcd34d}
+.risk-Medium  {background:#1e3a5f;color:#93c5fd}
+.risk-Low     {background:#14532d;color:#86efac}
+.risk-Minimal {background:#1e293b;color:#64748b}
+
+/* ── Panel ───────────────────────────────────────────────────────────── */
+.panel{background:#0d1b2e;border:1px solid #1e3a5f;border-radius:14px;margin-bottom:20px;overflow:hidden}
+.panel-head{padding:14px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;gap:10px}
+.panel-head h2{font-size:.9rem;font-weight:600;color:#e2e8f0;margin:0}
+.panel-head .count{font-size:.7rem;background:#1e3a5f;color:#93c5fd;border-radius:10px;padding:2px 8px}
+.panel-body{padding:16px 20px}
+
+/* ── Two-col layout ──────────────────────────────────────────────────── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
+.tbl th{background:#0f2744;color:#94a3b8;padding:9px 12px;text-align:left;
+  font-size:.67rem;letter-spacing:.8px;text-transform:uppercase;border-bottom:1px solid #1e3a5f}
+.tbl td{padding:9px 12px;border-bottom:1px solid #0f2032;vertical-align:top}
+.tbl tr:last-child td{border:none}
+.tbl tr:hover td{background:#0f2032}
+.ip{font-family:'Courier New',monospace;font-size:.78rem;color:#7dd3fc}
+.mono{font-family:'Courier New',monospace;font-size:.75rem;color:#94a3b8;max-width:320px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Risk bar ────────────────────────────────────────────────────────── */
+.risk-bar-wrap{width:100%;background:#1e293b;border-radius:4px;height:6px;overflow:hidden}
+.risk-bar{height:6px;border-radius:4px;transition:width .4s}
+
+/* ── Tor tag ─────────────────────────────────────────────────────────── */
+.tor-tag{display:inline-block;background:#4c1d95;color:#c084fc;font-size:.65rem;
+  padding:1px 6px;border-radius:10px;font-weight:700;margin-left:4px}
+
+/* ── Flow graph ──────────────────────────────────────────────────────── */
+#flow-canvas{width:100%;height:480px;background:#060d1a;border-radius:10px;
+  border:1px solid #1e3a5f;cursor:grab}
+#flow-canvas:active{cursor:grabbing}
+.flow-legend{display:flex;gap:20px;font-size:.73rem;color:#64748b;margin-top:10px;padding-left:4px}
+.flow-legend span{display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+/* ── TLS fingerprint ─────────────────────────────────────────────────── */
+.fp-chip{font-family:'Courier New',monospace;font-size:.7rem;background:#0f2032;
+  border:1px solid #1e3a5f;border-radius:6px;padding:2px 6px;color:#67e8f9}
+.cls-Normal{color:#4ade80} .cls-Suspicious{color:#fbbf24} .cls-Tor{color:#c084fc}
+
+/* ── Tabs ────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:4px;margin-bottom:0;padding:14px 20px 0}
+.tab-btn{padding:7px 16px;border-radius:8px 8px 0 0;background:transparent;border:none;
+  color:#64748b;cursor:pointer;font-size:.8rem;transition:all .2s}
+.tab-btn.active{background:#0f2744;color:#e2e8f0}
+.tab-pane{display:none;padding:16px 20px}
+.tab-pane.active{display:block}
+
+/* ── Scrollable table containers ─────────────────────────────────────── */
+.tbl-scroll{max-height:340px;overflow-y:auto}
+.tbl-scroll::-webkit-scrollbar{width:4px}
+.tbl-scroll::-webkit-scrollbar-track{background:#060d1a}
+.tbl-scroll::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:4px}
+
+/* ── Evidence chip ───────────────────────────────────────────────────── */
+.ev-chip{background:#0f2032;border-left:2px solid #38bdf8;padding:4px 8px;
+  border-radius:0 4px 4px 0;font-size:.72rem;color:#94a3b8;margin-top:4px;display:block;
+  font-family:'Courier New',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:350px}
+
+/* ── Confidence meter ────────────────────────────────────────────────── */
+.conf-ring{display:inline-flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;font-size:.7rem;font-weight:700;
+  border:2px solid #1e3a5f}
+
+/* ── Search / filter controls (BUG-09 fix) ─────────────────────────────── */
+.tbl-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.tbl-search{background:#060d1a;border:1px solid #1e3a5f;border-radius:6px;
+  color:#e2e8f0;font-size:.8rem;padding:5px 10px;outline:none;width:220px}
+.tbl-search:focus{border-color:#38bdf8}
+.tbl-search::placeholder{color:#475569}
+.tbl-badge{font-size:.7rem;color:#475569;white-space:nowrap}
+
+/* ── Hybrid threat intelligence UI ───────────────────────────────────── */
+.ti-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:14px 0 22px}
+.ti-card{background:linear-gradient(135deg,rgba(15,39,68,.96),rgba(17,24,39,.96));border:1px solid rgba(56,189,248,.22);border-radius:16px;padding:16px;box-shadow:0 14px 35px rgba(0,0,0,.20)}
+.ti-k{font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:6px}.ti-v{font-size:1.55rem;font-weight:800;color:#e2e8f0}.ti-note{font-size:.73rem;color:#94a3b8;margin-top:4px}.provider-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#172554;color:#93c5fd;font-size:.68rem;margin-right:4px}.btn-action{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:10px;font-size:.78rem;font-weight:700;border:0;color:#fff;box-shadow:0 8px 20px rgba(0,0,0,.22);transition:.2s}.btn-blue{background:#2563eb}.btn-purple{background:#7c3aed}.btn-red{background:#dc2626}.btn-green{background:#16a34a}.btn-orange{background:#ea580c}.btn-cyan{background:#0891b2}.btn-action:hover{transform:translateY(-1px);filter:brightness(1.08)}
+
+
+/* ── Advanced SOC add-ons ───────────────────────────────────────────── */
+.soc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:20px}
+.alert-card{border-radius:14px;padding:14px 16px;background:#0f172a;border:1px solid #334155;box-shadow:0 12px 28px rgba(0,0,0,.18)}
+.alert-Critical{border-color:#dc2626;background:linear-gradient(135deg,rgba(127,29,29,.45),rgba(15,23,42,.98))}
+.alert-High{border-color:#f97316;background:linear-gradient(135deg,rgba(124,45,18,.45),rgba(15,23,42,.98))}
+.alert-Medium{border-color:#2563eb;background:linear-gradient(135deg,rgba(30,58,138,.35),rgba(15,23,42,.98))}
+.map-grid{height:330px;border:1px solid #1e3a5f;border-radius:14px;background:radial-gradient(circle at 20% 30%,rgba(56,189,248,.18),transparent 22%),radial-gradient(circle at 80% 60%,rgba(248,113,113,.14),transparent 24%),#06101f;position:relative;overflow:hidden}
+.map-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:#22c55e;box-shadow:0 0 18px currentColor;transform:translate(-50%,-50%)}
+.map-dot.High{background:#f59e0b}.map-dot.Critical{background:#ef4444}.map-dot.Medium{background:#3b82f6}
+.hunt-box{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.hunt-box input{flex:1;min-width:220px;background:#060d1a;border:1px solid #1e3a5f;border-radius:10px;color:#e2e8f0;padding:9px 12px}.hunt-results{margin-top:10px;max-height:220px;overflow:auto;font-size:.78rem;color:#94a3b8}
+
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="topbar-logo">🛡 Net<span>Forensics</span></div>
+  <nav class="topbar-nav">
+    <a href="/upload">Upload</a>
+    <a href="/dashboard" class="active">Dashboard</a>
+    <a href="/live">Live Capture</a>
+    <a href="/report">Report</a>
+    <a href="/report/pdf">Export PDF</a>
+  </nav>
+</div>
+
+<!-- ── Page ─────────────────────────────────────────────────────────────── -->
+<div class="page">
+
+  <!-- Source meta -->
+  <div style="margin-bottom:18px;display:flex;align-items:center;gap:16px">
+    <div>
+      <div style="color:#475569;font-size:.72rem;text-transform:uppercase;letter-spacing:1px">Evidence Source</div>
+      <div style="font-size:.95rem;font-weight:600;color:#e2e8f0">{{ source_name }}</div>
+    </div>
+    <div style="color:#1e3a5f">│</div>
+    <div>
+      <div style="color:#475569;font-size:.72rem;text-transform:uppercase;letter-spacing:1px">Generated</div>
+      <div style="font-size:.85rem;color:#94a3b8">{{ generated_at }}</div>
+    </div>
+    <div style="margin-left:auto">
+      <span style="font-size:.75rem;color:#64748b">Overall Risk</span>
+      <span class="risk-badge risk-{{ summary.overall_risk_label }}" style="font-size:.85rem;margin-left:8px">
+        {{ summary.overall_risk_score }}/100 — {{ summary.overall_risk_label }}
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Stat cards ──────────────────────────────────────────────────── -->
+  <p class="section-title">Overview</p>
+  <div class="cards-grid">
+    <div class="card blue">
+      <span class="card-icon">📦</span>
+      <div class="card-label">Total Events</div>
+      <div class="card-value">{{ summary.total_events }}</div>
+    </div>
+    <div class="card {% if summary.total_detections > 0 %}danger{% else %}success{% endif %}">
+      <span class="card-icon">⚠️</span>
+      <div class="card-label">Detections</div>
+      <div class="card-value">{{ summary.total_detections }}</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔗</span>
+      <div class="card-label">Sessions</div>
+      <div class="card-value">{{ summary.total_sessions }}</div>
+    </div>
+    <div class="card {% if summary.total_attackers > 0 %}warning{% endif %}">
+      <span class="card-icon">🎯</span>
+      <div class="card-label">Threat Actors</div>
+      <div class="card-value">{{ summary.total_attackers }}</div>
+    </div>
+    <div class="card {% if summary.credential_exposures > 0 %}danger{% else %}success{% endif %}">
+      <span class="card-icon">🔑</span>
+      <div class="card-label">Cred Exposures</div>
+      <div class="card-value">{{ summary.credential_exposures }}</div>
+    </div>
+    <div class="card {% if summary.tor_findings > 0 %}purple{% endif %}">
+      <span class="card-icon">🧅</span>
+      <div class="card-label">Tor Findings</div>
+      <div class="card-value">{{ summary.tor_findings }}</div>
+    </div>
+    <div class="card {% if summary.tls_anomalies > 0 %}warning{% endif %}">
+      <span class="card-icon">🔬</span>
+      <div class="card-label">TLS Anomalies</div>
+      <div class="card-value">{{ summary.tls_anomalies }}</div>
+    </div>
+  </div>
+
+
+  <p class="section-title">Hybrid Threat Intelligence Overview</p>
+  <div class="ti-grid">
+    <div class="ti-card">
+      <div class="ti-k">Unified Threat Score</div>
+      <div class="ti-v">{{ threat_intel.overall_threat_score|default(0) }}/100</div>
+      <div class="ti-note">Severity: <span class="risk-badge risk-{{ threat_intel.overall_severity|default('Low') }}">{{ threat_intel.overall_severity|default('Low') }}</span></div>
+    </div>
+    <div class="ti-card">
+      <div class="ti-k">Extracted IOCs</div>
+      <div class="ti-v">{{ summary.ioc_count|default(0) }}</div>
+      <div class="ti-note">IPs, domains, URLs and hashes extracted from evidence.</div>
+    </div>
+    <div class="ti-card">
+      <div class="ti-k">Confirmed / Correlated IOCs</div>
+      <div class="ti-v">{{ threat_intel.correlated_iocs|length }}</div>
+      <div class="ti-note">Matched through VirusTotal / Hybrid Analysis enrichment.</div>
+    </div>
+    <div class="ti-card">
+      <div class="ti-k">Investigation Confidence</div>
+      <div class="ti-v">{{ threat_intel.confidence_level|default('Low') }}</div>
+      <div class="ti-note">Sophistication: {{ threat_intel.sophistication_level|default('Low') }}</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:-6px 0 20px">
+    <a class="btn-action btn-blue" href="/upload">⬆ Upload</a>
+    <a class="btn-action btn-purple" href="/dashboard">🧠 Analyze</a>
+    <a class="btn-action btn-cyan" href="/live">📡 Monitoring</a>
+    <a class="btn-action btn-orange" href="/report">📄 Report</a>
+    <a class="btn-action btn-green" href="/report/pdf">⬇ Export PDF</a>
+  </div>
+  <!-- ── Threat Intelligence tabs ──────────────────────────────────────── -->
+  <p class="section-title">Threat Intelligence</p>
+  <div class="panel" style="margin-bottom:20px">
+    <div class="tabs" id="threat-tabs">
+      <button class="tab-btn active" data-tab="tab-attacks">⚔️ Attack Patterns</button>
+      <button class="tab-btn" data-tab="tab-tor">🧅 Tor Detection</button>
+      <button class="tab-btn" data-tab="tab-tls">🔬 TLS Fingerprints</button>
+      <button class="tab-btn" data-tab="tab-risk">📊 Risk Scores</button>
+      <button class="tab-btn" data-tab="tab-iocs">🧬 IOC Enrichment</button>
+    </div>
+
+    <!-- Attacks -->
+    <div id="tab-attacks" class="tab-pane active">
+      {% if attacks %}
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s1" placeholder="Filter…" oninput="filterTable('s1','tb1','cnt1')"><span class="tbl-badge">Showing <span id="cnt1">all</span></span></div>
+<div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr>
+          <th>Attack Type</th><th>Source IP</th><th>Dest IP</th><th>Time</th><th>Risk</th><th>Evidence</th>
+        </tr></thead>
+        <tbody id="tb1">
+        {% for a in attacks %}
+        <tr>
+          <td style="color:#fbbf24;font-weight:600">{{ a.attack_type }}</td>
+          <td class="ip">{{ a.src_ip }}</td>
+          <td class="ip">{{ a.dst_ip }}</td>
+          <td style="color:#64748b;font-size:.73rem">{{ a.timestamp }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="risk-bar-wrap" style="width:60px">
+                <div class="risk-bar" style="width:{{ a.risk_score }}%;background:{% if a.risk_score>=80 %}#ef4444{% elif a.risk_score>=60 %}#f59e0b{% else %}#3b82f6{% endif %}"></div>
+              </div>
+              <span style="font-size:.75rem;color:#e2e8f0">{{ a.risk_score }}</span>
+            </div>
+          </td>
+          <td><span class="ev-chip">{{ a.get('evidence', a.get('details','')) }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px 0">No attack patterns detected.</p>
+      {% endif %}
+    </div>
+
+    <!-- Tor -->
+    <div id="tab-tor" class="tab-pane">
+      {% if tor_findings %}
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s2" placeholder="Filter…" oninput="filterTable('s2','tb2','cnt2')"><span class="tbl-badge">Showing <span id="cnt2">all</span></span></div>
+<div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr>
+          <th>Label</th><th>Source IP</th><th>Destination IP</th><th>Port</th><th>Confidence</th><th>Reason</th>
+        </tr></thead>
+        <tbody id="tb2">
+        {% for f in tor_findings %}
+        <tr>
+          <td><span class="tor-tag">{{ f.label }}</span></td>
+          <td class="ip">{{ f.src_ip }}</td>
+          <td class="ip">{{ f.dst_ip }}</td>
+          <td style="color:#c084fc;font-size:.78rem;font-weight:600">{{ f.dst_port if f.dst_port else '—' }}</td>
+          <td>
+            <span class="conf-ring" style="border-color:{% if f.confidence>=80 %}#7c3aed{% else %}#1e3a5f{% endif %};color:{% if f.confidence>=80 %}#c084fc{% else %}#94a3b8{% endif %}">
+              {{ f.confidence }}
+            </span>
+          </td>
+          <td style="color:#94a3b8;font-size:.77rem">{{ f.reason }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px 0">No Tor traffic detected.</p>
+      {% endif %}
+    </div>
+
+    <!-- TLS -->
+    <div id="tab-tls" class="tab-pane">
+      {% if tls_findings %}
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s3" placeholder="Filter…" oninput="filterTable('s3','tb3','cnt3')"><span class="tbl-badge">Showing <span id="cnt3">all</span></span></div>
+<div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr>
+          <th>Source IP</th><th>Dest IP</th><th>JA3 Fingerprint</th><th>Classification</th><th>Method</th>
+        </tr></thead>
+        <tbody id="tb3">
+        {% for f in tls_findings %}
+        <tr>
+          <td class="ip">{{ f.src_ip }}</td>
+          <td class="ip">{{ f.dst_ip }}:{{ f.dst_port }}</td>
+          <td><span class="fp-chip">{{ f.ja3_fingerprint }}</span></td>
+          <td>
+            <span class="cls-{% if 'Normal' in f.classification %}Normal{% elif 'Tor' in f.classification %}Tor{% else %}Suspicious{% endif %}">
+              {{ f.classification }}
+            </span>
+          </td>
+          <td style="font-size:.72rem;color:#475569">{% if f.parsed %}Parsed ClientHello{% else %}Heuristic{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px 0">No TLS/HTTPS traffic found for fingerprinting.</p>
+      {% endif %}
+    </div>
+
+    <!-- Risk Scores -->
+    <div id="tab-risk" class="tab-pane">
+      {% if risk_records %}
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s4" placeholder="Filter…" oninput="filterTable('s4','tb4','cnt4')"><span class="tbl-badge">Showing <span id="cnt4">all</span></span></div>
+<div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr>
+          <th>Source IP</th><th>Score</th><th>Label</th><th>Events</th><th>Tor</th><th>TLS Anomaly</th><th>Reasons</th>
+        </tr></thead>
+        <tbody id="tb4">
+        {% for r in risk_records %}
+        <tr>
+          <td class="ip">{{ r.src_ip }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="risk-bar-wrap" style="width:70px">
+                <div class="risk-bar" style="width:{{ r.risk_score }}%;background:{% if r.risk_score>=80 %}#ef4444{% elif r.risk_score>=60 %}#f59e0b{% elif r.risk_score>=40 %}#3b82f6{% else %}#22c55e{% endif %}"></div>
+              </div>
+              <strong style="color:#e2e8f0">{{ r.risk_score }}</strong>
+            </div>
+          </td>
+          <td><span class="risk-badge risk-{{ r.risk_label }}">{{ r.risk_label }}</span></td>
+          <td style="color:#94a3b8">{{ r.event_count }}</td>
+          <td>{% if r.tor_detected %}<span class="tor-tag">TOR</span>{% else %}<span style="color:#475569">—</span>{% endif %}</td>
+          <td>{% if r.tls_anomaly %}<span style="color:#fbbf24">⚠ Yes</span>{% else %}<span style="color:#475569">—</span>{% endif %}</td>
+          <td style="font-size:.72rem;color:#64748b">{{ r.reasons[:3]|join(', ') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px 0">No risk data.</p>
+      {% endif %}
+    </div>
+
+    <!-- IOC Enrichment -->
+    <div id="tab-iocs" class="tab-pane">
+      <div class="ti-grid">
+        <div class="ti-card"><div class="ti-k">VT Queried</div><div class="ti-v">{{ virustotal_summary.queried|default(0) }}</div><div class="ti-note">{{ virustotal_summary.message|default('VirusTotal section loaded.') }}</div></div>
+        <div class="ti-card"><div class="ti-k">VT Successful</div><div class="ti-v">{{ virustotal_summary.ok|default(0) }}</div></div>
+        <div class="ti-card"><div class="ti-k">VT Malicious</div><div class="ti-v">{{ virustotal_summary.malicious|default(0) }}</div></div>
+        <div class="ti-card"><div class="ti-k">VT Errors</div><div class="ti-v">{{ virustotal_summary.errors|default(0) }}</div></div>
+      </div>
+      <h3 style="margin:18px 0 10px;color:#e2e8f0">🛡️ VirusTotal Findings</h3>
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="svt" placeholder="Filter VirusTotal results…" oninput="filterTable('svt','tbvt','cntvt')"><span class="tbl-badge">Showing <span id="cntvt">all</span></span></div>
+      <div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr><th>Indicator</th><th>Type</th><th>Status</th><th>Detection Ratio</th><th>Score</th><th>Details</th></tr></thead>
+        <tbody id="tbvt">
+        {% for i in virustotal_rows %}
+        <tr>
+          <td class="mono" title="{{ i.indicator }}">{{ i.indicator }}</td>
+          <td>{{ i.type }}</td>
+          <td><span class="provider-pill">{{ i.status }}</span></td>
+          <td>{{ i.detection_ratio }}</td>
+          <td><strong style="color:#e2e8f0">{{ i.score }}</strong></td>
+          <td style="font-size:.72rem;color:#94a3b8">{{ i.details }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:#64748b;padding:22px">VirusTotal section is active, but this upload did not contain a public IP/domain/URL/hash suitable for lookup.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+
+      <h3 style="margin:22px 0 10px;color:#e2e8f0">🔗 Correlated External IOCs</h3>
+      {% if threat_intel.correlated_iocs %}
+      <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s9" placeholder="Filter…" oninput="filterTable('s9','tb9','cnt9')"><span class="tbl-badge">Showing <span id="cnt9">all</span></span></div>
+      <div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr><th>Indicator</th><th>Type</th><th>Providers</th><th>Score</th><th>Severity</th><th>Details</th></tr></thead>
+        <tbody id="tb9">
+        {% for i in threat_intel.correlated_iocs %}
+        <tr>
+          <td class="mono" title="{{ i.indicator }}">{{ i.indicator }}</td>
+          <td>{{ i.type }}</td>
+          <td>{% for p in i.providers %}<span class="provider-pill">{{ p }}</span>{% endfor %}</td>
+          <td><strong style="color:#e2e8f0">{{ i.score }}</strong></td>
+          <td><span class="risk-badge risk-{{ i.severity }}">{{ i.severity }}</span></td>
+          <td style="font-size:.72rem;color:#94a3b8">{{ i.details }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px 0">No external malicious IOC confirmation yet. Add API keys in .env or upload evidence containing public IOCs/hashes.</p>
+      {% endif %}
+      <div class="ti-grid">
+        <div class="ti-card"><div class="ti-k">IPs</div><div class="ti-v">{{ iocs.summary.ip_count|default(0) }}</div></div>
+        <div class="ti-card"><div class="ti-k">Domains</div><div class="ti-v">{{ iocs.summary.domain_count|default(0) }}</div></div>
+        <div class="ti-card"><div class="ti-k">URLs</div><div class="ti-v">{{ iocs.summary.url_count|default(0) }}</div></div>
+        <div class="ti-card"><div class="ti-k">Hashes</div><div class="ti-v">{{ iocs.summary.hash_count|default(0) }}</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Two-column: IP Ranking + Sessions ─────────────────────────────── -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>🏆 Suspicious IP Ranking</h2>
+        <span class="count">{{ suspicious_ranking|length }}</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s5" placeholder="Filter…" oninput="filterTable('s5','tb5','cnt5')"><span class="tbl-badge">Showing <span id="cnt5">all</span></span></div>
+<div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>IP</th><th>Risk</th><th>Events</th><th>Tor</th><th>Behaviours</th></tr></thead>
+          <tbody id="tb5">
+          {% for item in suspicious_ranking[:15] %}
+          <tr>
+            <td class="ip">{{ item.src_ip }}
+              {% if item.get('tor_detected') %}<span class="tor-tag">TOR</span>{% endif %}
+            </td>
+            <td>
+              <span class="risk-badge risk-{{ item.get('risk_label','Minimal') }}">{{ item.risk_score }}</span>
+            </td>
+            <td style="color:#64748b">{{ item.event_count }}</td>
+            <td>{% if item.get('tor_detected') %}🟣{% else %}—{% endif %}</td>
+            <td style="font-size:.72rem;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              {{ item.primary_behaviors }}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>🔗 Session Reconstruction</h2>
+        <span class="count">{{ sessions|length }}</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s6" placeholder="Filter…" oninput="filterTable('s6','tb6','cnt6')"><span class="tbl-badge">Showing <span id="cnt6">all</span></span></div>
+<div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Source</th><th>Destination</th><th>Proto</th><th>Pkts</th></tr></thead>
+          <tbody id="tb6">
+          {% for s in sessions[:20] %}
+          <tr>
+            <td class="ip">{{ s.src_ip }}:{{ s.src_port }}</td>
+            <td class="ip">{{ s.dst_ip }}:{{ s.dst_port }}</td>
+            <td style="color:#38bdf8;font-size:.75rem">{{ s.protocol }}</td>
+            <td style="color:#64748b">{{ s.packet_count }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Network Flow Graph ─────────────────────────────────────────────── -->
+  <p class="section-title">Network Flow Graph</p>
+  <div class="panel" style="margin-bottom:20px">
+    <div class="panel-head"><h2>🌐 IP Communication Graph</h2>
+      <span class="count" id="graph-node-count"></span>
+    </div>
+    <div class="panel-body">
+      <canvas id="flow-canvas"></canvas>
+      <div class="flow-legend">
+        <span><span class="dot" style="background:#ef4444"></span>High-risk node</span>
+        <span><span class="dot" style="background:#c084fc"></span>Tor node</span>
+        <span><span class="dot" style="background:#38bdf8"></span>Normal node</span>
+        <span><span class="dot" style="background:#22c55e"></span>Low-risk</span>
+        <span style="margin-left:12px;color:#475569">Drag to pan · Scroll to zoom</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Timeline + Credentials ─────────────────────────────────────────── -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><h2>📅 Event Timeline</h2><span class="count">{{ timeline|length }}</span></div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s7" placeholder="Filter…" oninput="filterTable('s7','tb7','cnt7')"><span class="tbl-badge">Showing <span id="cnt7">all</span></span></div>
+<div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Destination</th></tr></thead>
+          <tbody id="tb7">
+          {% for item in timeline[:40] %}
+          <tr>
+            <td style="color:#475569;font-size:.72rem;white-space:nowrap">{{ item.timestamp }}</td>
+            <td style="color:#fbbf24;font-size:.77rem">{{ item.event }}</td>
+            <td class="ip">{{ item.src_ip }}</td>
+            <td class="ip">{{ item.dst_ip }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🔑 Credential Exposures</h2>
+        <span class="count">{{ protocol_analysis.credential_hits|length }}</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        {% if protocol_analysis.credential_hits %}
+        <div class="tbl-toolbar"><input class="tbl-search" type="text" id="s8" placeholder="Filter…" oninput="filterTable('s8','tb8','cnt8')"><span class="tbl-badge">Showing <span id="cnt8">all</span></span></div>
+<div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Source → Dest</th><th>Extracted Fields</th></tr></thead>
+          <tbody id="tb8">
+          {% for hit in protocol_analysis.credential_hits %}
+          <tr>
+            <td class="ip" style="white-space:nowrap">{{ hit.src_ip }}<br><span style="color:#475569">→ {{ hit.dst_ip }}</span></td>
+            <td>
+              {% if hit.credentials %}
+                {% for k,v in hit.credentials.items() %}
+                  <span style="color:#94a3b8;font-size:.72rem">{{ k }}=</span><span style="color:#f87171;font-size:.72rem">{{ v }}</span><br>
+                {% endfor %}
+              {% else %}
+                <span class="mono">{{ hit.payload_excerpt[:120] }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p style="color:#475569;font-size:.85rem;text-align:center;padding:30px">No plaintext credentials detected.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- ── Advanced SOC/DFIR Add-ons ─────────────────────────────────────── -->
+  <p class="section-title">Advanced SOC/DFIR Enhancements</p>
+  <div class="soc-grid">
+    <div class="panel">
+      <div class="panel-head"><h2>🚨 Alert Queue</h2><span class="count">{{ alerts|length }}</span></div>
+      <div class="panel-body">
+        {% if alerts %}
+          {% for a in alerts %}
+          <div class="alert-card alert-{{ a.severity }}" style="margin-bottom:10px">
+            <div style="font-weight:800;color:#e2e8f0">{{ a.severity }} — {{ a.title }}</div>
+            <div style="font-size:.8rem;color:#cbd5e1;margin-top:4px">{{ a.message }}</div>
+          </div>
+          {% endfor %}
+          <button class="btn-action btn-red" onclick="sendAlert()">📨 Send Webhook Alert</button>
+        {% else %}
+          <p style="color:#64748b;font-size:.85rem">No high-priority alert generated for this case.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🧭 MITRE ATT&CK Coverage</h2><span class="count">{{ mitre_mappings|length }}</span></div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-scroll">
+          <table class="tbl">
+            <thead><tr><th>Technique</th><th>Tactic</th><th>Source</th></tr></thead>
+            <tbody>
+            {% for m in mitre_mappings[:10] %}
+              <tr><td><span style="color:#fbbf24;font-weight:700">{{ m.technique_id }}</span><br>{{ m.technique }}</td><td>{{ m.tactic }}</td><td class="ip">{{ m.src_ip }}</td></tr>
+            {% else %}
+              <tr><td colspan="3" style="text-align:center;color:#64748b;padding:22px">No MITRE mapping generated.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><h2>🌍 Threat Map</h2><span class="count">{{ threat_map.total_public_ips|default(0) }} public IPs</span></div>
+      <div class="panel-body">
+        <div class="map-grid" id="threat-map">
+          {% for p in threat_map.points[:40] %}
+            <span class="map-dot {{ p.severity }}" title="{{ p.ip }} · {{ p.country }} · {{ p.severity }}" style="left:{{ ((p.lon + 180) / 360 * 100)|round(1) }}%;top:{{ ((90 - p.lat) / 180 * 100)|round(1) }}%"></span>
+          {% endfor %}
+        </div>
+        <p style="font-size:.72rem;color:#64748b;margin-top:8px">{{ threat_map.note }}</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🔎 Threat Hunting Console</h2><span class="count">IOC / IP / attack search</span></div>
+      <div class="panel-body">
+        <p style="font-size:.8rem;color:#94a3b8">Search across attacks, timeline, VirusTotal, Hybrid Analysis, MITRE mappings, rules, and anomalies.</p>
+        <div class="hunt-box"><input id="huntQuery" placeholder="Example: 192.168.1.10, credential, T1110, malicious"><button class="btn-action btn-purple" onclick="runHunt()">Run Hunt</button></div>
+        <div id="huntResults" class="hunt-results"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><h2>🤖 Behavior Anomaly Engine</h2><span class="count">{{ anomaly_findings|length }}</span></div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Source IP</th><th>Score</th><th>Reason</th></tr></thead><tbody>
+        {% for a in anomaly_findings[:20] %}<tr><td class="ip">{{ a.src_ip }}</td><td><span class="risk-badge risk-{{ a.severity }}">{{ a.score }}</span></td><td>{{ a.reason }}</td></tr>{% else %}<tr><td colspan="3" style="text-align:center;color:#64748b;padding:22px">No behavior anomaly found.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🧬 YARA/Sigma-Style Rule Matches</h2><span class="count">{{ rule_findings|length }}</span></div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Rule</th><th>Type</th><th>Source</th><th>Evidence</th></tr></thead><tbody>
+        {% for r in rule_findings[:20] %}<tr><td>{{ r.rule_name }}<br><span class="risk-badge risk-{{ r.severity }}">{{ r.severity }}</span></td><td>{{ r.rule_type }}</td><td class="ip">{{ r.src_ip }}</td><td class="mono">{{ r.evidence }}</td></tr>{% else %}<tr><td colspan="4" style="text-align:center;color:#64748b;padding:22px">No YARA/Sigma-style rule match found.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<!-- ── Scripts ───────────────────────────────────────────────────────────── -->
+<script>
+// ── Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(target).classList.add('active');
+  });
+});
+
+// ── Force-directed Network Flow Graph ────────────────────────────────────
+(function() {
+  const graphData = {{ flow_graph | tojson }};
+  const canvas = document.getElementById('flow-canvas');
+  const ctx    = canvas.getContext('2d');
+  const nodes  = graphData.nodes || [];
+  const edges  = graphData.edges || [];
+
+  document.getElementById('graph-node-count').textContent = nodes.length + ' nodes';
+
+  if (nodes.length === 0) {
+    canvas.style.display = 'none'; return;
+  }
+
+  // Set canvas resolution
+  function resize() {
+    canvas.width  = canvas.offsetWidth  * devicePixelRatio;
+    canvas.height = canvas.offsetHeight * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+  }
+  resize();
+  window.addEventListener('resize', () => { resize(); draw(); });
+
+  const W = () => canvas.offsetWidth;
+  const H = () => canvas.offsetHeight;
+
+  // Init node positions on a circle
+  nodes.forEach((n, i) => {
+    const angle = (i / nodes.length) * 2 * Math.PI;
+    const r = Math.min(W(), H()) * 0.35;
+    n.x  = W()/2 + r * Math.cos(angle);
+    n.y  = H()/2 + r * Math.sin(angle);
+    n.vx = 0; n.vy = 0;
+  });
+
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.id] = n);
+
+  // Build adjacency
+  const edgeWeights = {};
+  edges.forEach(e => {
+    const k = e.source + '|' + e.target;
+    edgeWeights[k] = e.weight;
+  });
+  const maxWeight = Math.max(...Object.values(edgeWeights).concat([1]));
+
+  // Pan + zoom
+  let panX = 0, panY = 0, zoom = 1;
+  let dragging = false, lastMX, lastMY;
+
+  canvas.addEventListener('mousedown', e => { dragging = true; lastMX = e.clientX; lastMY = e.clientY; });
+  canvas.addEventListener('mouseup',   () => dragging = false);
+  canvas.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    panX += e.clientX - lastMX;
+    panY += e.clientY - lastMY;
+    lastMX = e.clientX; lastMY = e.clientY;
+  });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoom = Math.max(0.3, Math.min(3, zoom - e.deltaY * 0.001));
+  }, {passive:false});
+
+  function nodeColor(n) {
+    if (n.tor)        return '#c084fc';
+    if (n.risk_score >= 80) return '#ef4444';
+    if (n.risk_score >= 60) return '#f59e0b';
+    if (n.risk_score >= 40) return '#3b82f6';
+    return '#22c55e';
+  }
+
+  function nodeRadius(n) {
+    return 6 + Math.min(n.risk_score / 12, 10);
+  }
+
+  // Force simulation
+  function simulate() {
+    const k    = 0.0015;   // spring
+    const rep  = 2800;     // repulsion
+    const damp = 0.85;
+
+    nodes.forEach(n => { n.fx = 0; n.fy = 0; });
+
+    // Repulsion
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i+1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        const force = rep / (dist * dist);
+        a.fx -= force * dx / dist;
+        a.fy -= force * dy / dist;
+        b.fx += force * dx / dist;
+        b.fy += force * dy / dist;
+      }
+    }
+
+    // Attraction along edges
+    edges.forEach(e => {
+      const a = nodeMap[e.source], b = nodeMap[e.target];
+      if (!a || !b) return;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const ideal = 100 + (e.weight / maxWeight) * 60;
+      const force = k * (dist - ideal);
+      a.fx += force * dx / dist;
+      a.fy += force * dy / dist;
+      b.fx -= force * dx / dist;
+      b.fy -= force * dy / dist;
+    });
+
+    // Centre pull
+    nodes.forEach(n => {
+      n.fx += (W()/2 - n.x) * 0.003;
+      n.fy += (H()/2 - n.y) * 0.003;
+      n.vx = (n.vx + n.fx) * damp;
+      n.vy = (n.vy + n.fy) * damp;
+      n.x += n.vx;
+      n.y += n.vy;
+    });
+  }
+
+  function draw() {
+    const cw = W(), ch = H();
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+
+    // Edges
+    edges.forEach(e => {
+      const a = nodeMap[e.source], b = nodeMap[e.target];
+      if (!a || !b) return;
+      const alpha = 0.15 + (e.weight / maxWeight) * 0.5;
+      const lw    = 0.5 + (e.weight / maxWeight) * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
+      ctx.lineWidth   = lw;
+      ctx.stroke();
+    });
+
+    // Nodes
+    nodes.forEach(n => {
+      const r   = nodeRadius(n);
+      const col = nodeColor(n);
+
+      // Glow
+      const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r*2.5);
+      grd.addColorStop(0, col + '55');
+      grd.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r*2.5, 0, 2*Math.PI);
+      ctx.fillStyle = grd;
+      ctx.fill();
+
+      // Circle
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, 2*Math.PI);
+      ctx.fillStyle   = col;
+      ctx.strokeStyle = '#060d1a';
+      ctx.lineWidth   = 1.5;
+      ctx.fill();
+      ctx.stroke();
+
+      // Label
+      ctx.fillStyle  = '#cbd5e1';
+      ctx.font       = `${Math.max(9, 10/zoom)}px 'Courier New',monospace`;
+      ctx.textAlign  = 'center';
+      ctx.fillText(n.label, n.x, n.y + r + 12);
+    });
+
+    ctx.restore();
+  }
+
+  let frame = 0;
+  function loop() {
+    if (frame < 300) simulate();   // run physics for 300 frames then coast
+    frame++;
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+
+<script>
+/* ── Table search (BUG-09 fix) ─────────────────────────────────────────── */
+function filterTable(inputId, tbodyId, countId) {
+  const q = document.getElementById(inputId).value.toLowerCase().trim();
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  let shown = 0;
+  tbody.querySelectorAll("tr").forEach(tr => {
+    const match = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = match ? "" : "none";
+    if (match) shown++;
+  });
+  const countEl = document.getElementById(countId);
+  if (countEl) countEl.textContent = shown;
+}
+</script>
+
+
+<script>
+async function runHunt(){
+  const q=document.getElementById('huntQuery').value.trim();
+  const box=document.getElementById('huntResults');
+  if(!q){box.innerHTML='<span style="color:#64748b">Enter a query first.</span>';return;}
+  box.innerHTML='Searching...';
+  const res=await fetch('/hunt?q='+encodeURIComponent(q));
+  const data=await res.json();
+  if(!data.results || data.results.length===0){box.innerHTML='<span style="color:#64748b">No matches found.</span>';return;}
+  box.innerHTML='<b style="color:#e2e8f0">'+data.count+' match(es)</b><br>' + data.results.slice(0,25).map(x=>'<div style="border-bottom:1px solid #1e3a5f;padding:7px 0"><span style="color:#38bdf8">'+x.source+'</span> · '+escapeHtml(JSON.stringify(x.record).slice(0,260))+'</div>').join('');
+}
+async function sendAlert(){
+  const res=await fetch('/alerts/send',{method:'POST'});
+  const data=await res.json();
+  alert(data.message || data.status || 'Alert request completed');
+}
+function escapeHtml(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:30px; }
+        .card { background:#1e293b; padding:20px; border-radius:16px; margin-bottom:20px; }
+        a { color:#93c5fd; }
+        ul { line-height:1.8; }
+        code { background:#111827; padding:2px 6px; border-radius:6px; }
+        table { width:100%; border-collapse:collapse; margin-top:12px; }
+        th, td { border:1px solid #334155; padding:8px; text-align:left; }
+        th { background:#334155; }
+    </style>
+</head>
+<body>
+    <h1>Structured Forensic Report</h1>
+    <p><a href="/dashboard">Dashboard</a> | <a href="/upload">Upload</a> | <a href="/report/pdf">Export PDF</a></p>
+    <div class="card">
+        <h2>Case Summary</h2>
+        <ul>
+            <li>Source: {{ source_name }}</li>
+            <li>Generated At: {{ generated_at }}</li>
+            <li>Total Events: {{ summary.total_events }}</li>
+            <li>Total Detections: {{ summary.total_detections }}</li>
+            <li>Total Sessions: {{ summary.total_sessions }}</li>
+            <li>Total Attackers: {{ summary.total_attackers }}</li>
+            <li>Credential Exposures: {{ summary.credential_exposures }}</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Hybrid Threat Intelligence Summary</h2>
+        <ul>
+            <li>Unified Threat Score: {{ threat_intel.overall_threat_score|default(0) }}/100</li>
+            <li>Severity: {{ threat_intel.overall_severity|default('Low') }}</li>
+            <li>Confidence Level: {{ threat_intel.confidence_level|default('Low') }}</li>
+            <li>Attack Sophistication: {{ threat_intel.sophistication_level|default('Low') }}</li>
+            <li>Total Extracted IOCs: {{ summary.ioc_count|default(0) }}</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>VirusTotal Findings</h2>
+        <ul>
+            <li>Status Message: {{ virustotal_summary.message|default('VirusTotal section loaded.') }}</li>
+            <li>Total Queried IOCs: {{ virustotal_summary.queried|default(0) }}</li>
+            <li>Successful Lookups: {{ virustotal_summary.ok|default(0) }}</li>
+            <li>Malicious/Suspicious Matches: {{ virustotal_summary.malicious|default(0) }}</li>
+            <li>Not Found: {{ virustotal_summary.not_found|default(0) }}</li>
+            <li>Errors/Rate Limits: {{ virustotal_summary.errors|default(0) }}</li>
+        </ul>
+        <table>
+            <tr><th>Indicator</th><th>Type</th><th>Status</th><th>Detection Ratio</th><th>Score</th><th>Details</th></tr>
+            {% for item in virustotal_rows[:30] %}
+            <tr>
+                <td><code>{{ item.indicator }}</code></td>
+                <td>{{ item.type }}</td>
+                <td>{{ item.status }}</td>
+                <td>{{ item.detection_ratio }}</td>
+                <td>{{ item.score }}</td>
+                <td>{{ item.details }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6">VirusTotal section is active, but no public IP/domain/URL/hash was available for lookup in this evidence file.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="card">
+        <h2>Correlated IOCs</h2>
+        <table>
+            <tr><th>Indicator</th><th>Type</th><th>Providers</th><th>Score</th><th>Severity</th><th>Details</th></tr>
+            {% for item in threat_intel.correlated_iocs[:20] %}
+            <tr>
+                <td><code>{{ item.indicator }}</code></td>
+                <td>{{ item.type }}</td>
+                <td>{{ item.providers|join(', ') }}</td>
+                <td>{{ item.score }}</td>
+                <td>{{ item.severity }}</td>
+                <td>{{ item.details }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6">No external IOC correlation available. Add API keys in .env and upload evidence with public IOCs/hashes.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="card">
+        <h2>Protocol Analysis</h2>
+        <ul>
+            {% for item in protocol_analysis.protocol_counts %}
+            <li>{{ item.protocol }} : {{ item.count }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="card">
+        <h2>Top Suspicious IPs</h2>
+        <table>
+            <tr><th>IP</th><th>Risk</th><th>Events</th><th>Sessions</th></tr>
+            {% for item in suspicious_ranking[:10] %}
+            <tr>
+                <td>{{ item.get('src_ip', 'N/A') }}</td>
+                <td>{{ item.get('risk_score', 'N/A') }}</td>
+                <td>{{ item.get('event_count', 'N/A') }}</td>
+                <td>{{ item.get('session_count', 'N/A') }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="card">
+        <h2>Credential Exposures</h2>
+        <ul>
+            {% for hit in protocol_analysis.credential_hits %}
+            <li>{{ hit.src_ip }} -> {{ hit.dst_ip }} | {{ hit.payload_excerpt }}</li>
+            {% else %}
+            <li>No plaintext credentials detected.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="card">
+        <p>PDF export in this version uses ReportLab for better Windows compatibility.</p>
+    </div>
+</body>
+</html>

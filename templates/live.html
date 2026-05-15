@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Packet Capture — Network Forensics Platform</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #1c2333;
+  --border:      #30363d;
+  --border2:     #21262d;
+  --text:        #c9d1d9;
+  --text-muted:  #8b949e;
+  --accent:      #388bfd;
+  --accent-dim:  #1f3d6b;
+  --green:       #3fb950;
+  --yellow:      #d29922;
+  --red:         #f85149;
+  --purple:      #bc8cff;
+  --orange:      #ffa657;
+  --row-tcp:     rgba(56, 139, 253, 0.07);
+  --row-udp:     rgba(63, 185, 80, 0.07);
+  --row-icmp:    rgba(139, 148, 158, 0.10);
+  --row-dns:     rgba(210, 153, 34, 0.09);
+  --row-http:    rgba(255, 166, 87, 0.09);
+  --row-https:   rgba(63, 185, 80, 0.09);
+  --row-arp:     rgba(188, 140, 255, 0.09);
+  --row-susp:    rgba(248, 81, 73, 0.14);
+  --row-hover:   rgba(255,255,255,0.04);
+  --font-mono:   "JetBrains Mono","Fira Code","Consolas",monospace;
+}
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Top nav ─────────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-brand {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-brand .icon { color: var(--accent); font-size: 18px; }
+.topbar-sep { color: var(--border); }
+.topbar-title { font-size: 13px; color: var(--text-muted); }
+.topbar-spacer { flex: 1; }
+.topbar-link {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.topbar-link:hover { color: var(--text); border-color: var(--accent); text-decoration: none; }
+
+/* ── Main layout ─────────────────────────────────────────────────────────── */
+.main-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.toolbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.inp {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 9px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.inp:focus { border-color: var(--accent); }
+.inp-iface { width: 180px; }
+.inp-count { width: 80px; }
+
+select.inp { cursor: pointer; }
+
+.btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-start  { background: var(--accent);  color: #fff; }
+.btn-stop   { background: var(--red);     color: #fff; }
+.btn-clear  { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+.btn-csv    { background: var(--green);   color: #fff; text-decoration: none; }
+.btn-start:hover:not(:disabled) { opacity: 0.85; }
+.btn-stop:hover:not(:disabled)  { opacity: 0.85; }
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+.filterbar {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.chip {
+  padding: 3px 11px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+.chip.active { border-color: currentColor; }
+.chip-all    { color: var(--text-muted);  background: rgba(139,148,158,0.12); }
+.chip-tcp    { color: #79b8ff;            background: rgba(56,139,253,0.12); }
+.chip-udp    { color: #85e89d;            background: rgba(63,185,80,0.12); }
+.chip-icmp   { color: var(--text-muted);  background: rgba(139,148,158,0.12); }
+.chip-dns    { color: #e3b341;            background: rgba(210,153,34,0.12); }
+.chip-http   { color: var(--orange);      background: rgba(255,166,87,0.12); }
+.chip-https  { color: #85e89d;            background: rgba(63,185,80,0.12); }
+.chip-arp    { color: var(--purple);      background: rgba(188,140,255,0.12); }
+.chip-susp   { color: var(--red);         background: rgba(248,81,73,0.12); }
+.chip.active { filter: brightness(1.2); }
+.chip-all.active  { background: rgba(139,148,158,0.25); }
+.chip-tcp.active  { background: rgba(56,139,253,0.25); }
+.chip-udp.active  { background: rgba(63,185,80,0.25); }
+.chip-icmp.active { background: rgba(139,148,158,0.25); }
+.chip-dns.active  { background: rgba(210,153,34,0.25); }
+.chip-http.active  { background: rgba(255,166,87,0.25); }
+.chip-https.active { background: rgba(63,185,80,0.25); }
+.chip-arp.active  { background: rgba(188,140,255,0.25); }
+.chip-susp.active { background: rgba(248,81,73,0.25); }
+
+.filter-spacer  { flex: 1; }
+.stat-pill {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.stat-pill span { color: var(--accent); font-weight: 700; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+.statusbar {
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.5s infinite; }
+.status-dot.error   { background: var(--red); }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+#statusText { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.badge-captured { background: rgba(56,139,253,0.15); color: var(--accent); }
+.badge-susp     { background: rgba(248,81,73,0.15);  color: var(--red); }
+.badge-shown    { background: rgba(139,148,158,0.1); color: var(--text-muted); }
+
+/* ── Packet table ────────────────────────────────────────────────────────── */
+.table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  min-height: 0;
+}
+.pkt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  table-layout: fixed;
+}
+.pkt-table col.col-no    { width: 52px; }
+.pkt-table col.col-time  { width: 100px; }
+.pkt-table col.col-src   { width: 190px; }
+.pkt-table col.col-dst   { width: 190px; }
+.pkt-table col.col-proto { width: 80px; }
+.pkt-table col.col-len   { width: 60px; }
+.pkt-table col.col-flags { width: 90px; }
+.pkt-table col.col-info  { width: auto; }
+
+.pkt-table thead { position: sticky; top: 0; z-index: 10; }
+.pkt-table th {
+  background: var(--surface2);
+  border-bottom: 2px solid var(--border);
+  border-right: 1px solid var(--border2);
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.pkt-table th:hover { color: var(--text); background: var(--surface); }
+.pkt-table th .sort-icon { margin-left: 4px; opacity: 0.4; }
+.pkt-table th.sort-active .sort-icon { opacity: 1; color: var(--accent); }
+
+.pkt-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border2);
+  border-right: 1px solid var(--border2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Row colour coding */
+.row-tcp    { background: var(--row-tcp);  }
+.row-udp    { background: var(--row-udp);  }
+.row-icmp   { background: var(--row-icmp); }
+.row-dns    { background: var(--row-dns);  }
+.row-http   { background: var(--row-http); }
+.row-https  { background: var(--row-https);}
+.row-arp    { background: var(--row-arp);  }
+.row-suspicious { background: var(--row-susp) !important; }
+
+.pkt-table tbody tr:hover td { background: var(--row-hover) !important; cursor: pointer; }
+.pkt-table tbody tr.selected td { background: rgba(56,139,253,0.18) !important; }
+
+/* Protocol badge in table */
+.proto-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.pb-tcp   { background: rgba(56,139,253,0.2);   color: #79b8ff; }
+.pb-udp   { background: rgba(63,185,80,0.2);    color: #85e89d; }
+.pb-icmp  { background: rgba(139,148,158,0.2);  color: #8b949e; }
+.pb-dns   { background: rgba(210,153,34,0.2);   color: #e3b341; }
+.pb-http  { background: rgba(255,166,87,0.2);   color: #ffa657; }
+.pb-https { background: rgba(63,185,80,0.2);    color: #85e89d; }
+.pb-arp   { background: rgba(188,140,255,0.2);  color: #bc8cff; }
+.pb-ssh   { background: rgba(188,140,255,0.2);  color: #bc8cff; }
+.pb-ftp   { background: rgba(255,166,87,0.2);   color: #ffa657; }
+.pb-rdp   { background: rgba(248,81,73,0.2);    color: #f85149; }
+.pb-smtp  { background: rgba(210,153,34,0.2);   color: #e3b341; }
+.pb-other { background: rgba(139,148,158,0.15); color: #8b949e; }
+.susp-icon { color: var(--red); margin-right: 3px; }
+
+
+/* ── Credential Exposures Panel ─────────────────────────────────────────── */
+.cred-panel {
+  background: var(--surface);
+  border-top: 2px solid var(--red);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+}
+.cred-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+  border-bottom: 1px solid var(--border);
+}
+.cred-count {
+  background: var(--red);
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cred-table-wrap {
+  overflow-y: auto;
+  flex: 1;
+}
+.cred-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.cred-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 4px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.cred-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.cred-table td.cred-val {
+  color: var(--red);
+  font-weight: 600;
+}
+.cred-table tr:hover td { background: rgba(255,80,80,0.05); }
+
+/* ── Detail panel ────────────────────────────────────────────────────────── */
+.detail-panel {
+  height: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.detail-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  height: 34px;
+}
+.dtab {
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--border);
+  transition: all 0.15s;
+  user-select: none;
+}
+.dtab:hover { color: var(--text); background: var(--surface); }
+.dtab.active { color: var(--accent); background: var(--surface); border-bottom: 2px solid var(--accent); }
+.detail-content {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.detail-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  font-family: -apple-system, sans-serif;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 16px;
+}
+.dk { color: var(--text-muted); white-space: nowrap; }
+.dv { color: var(--text); word-break: break-all; }
+.dv.highlight { color: var(--accent); }
+.dv.suspicious { color: var(--red); }
+.dv.green { color: var(--green); }
+.hex-view {
+  white-space: pre;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--green);
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #444c56; }
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Hint block ──────────────────────────────────────────────────────────── */
+.hint-block {
+  background: rgba(56,139,253,0.06);
+  border: 1px solid rgba(56,139,253,0.2);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 8px 16px 0;
+  line-height: 1.6;
+}
+.hint-block code {
+  background: var(--accent-dim);
+  color: #79b8ff;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+</style>
+</head>
+<body>
+
+<!-- ── Top navigation ──────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span class="icon">🔬</span>
+    Network Forensics Platform
+  </div>
+  <span class="topbar-sep">›</span>
+  <span class="topbar-title">Live Packet Capture</span>
+  <div class="topbar-spacer"></div>
+  <a href="/upload" class="topbar-link">← Evidence Upload</a>
+  <a href="/dashboard" class="topbar-link">Dashboard</a>
+</div>
+
+<!-- ── Main layout ─────────────────────────────────────────────────────── -->
+<div class="main-layout">
+
+  <!-- Hint block -->
+  <div class="hint-block">
+    <strong>Interface examples —</strong>
+    Linux/macOS: <code>eth0</code>, <code>ens33</code>, <code>en0</code>, <code>lo</code> &nbsp;·&nbsp;
+    Windows: <code>\Device\NPF_Loopback</code>, <code>\Device\NPF_{GUID}</code> &nbsp;·&nbsp;
+    Leave blank for system default. Count <code>0</code> = unlimited.
+    Requires <strong>root / Administrator</strong> privileges for raw capture.
+  </div>
+
+  <!-- ── Capture toolbar ──────────────────────────────────────────────── -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <span class="lbl">Interface</span>
+      <input type="text" id="ifaceInput" class="inp inp-iface" placeholder="default">
+    </div>
+    <div class="toolbar-group">
+      <span class="lbl">Count</span>
+      <input type="number" id="countInput" class="inp inp-count" value="0" min="0">
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+      <button id="btnStart" class="btn btn-start" onclick="startCapture()">
+        ▶ Start
+      </button>
+      <button id="btnStop" class="btn btn-stop" onclick="stopCapture()" disabled>
+        ⏹ Stop
+      </button>
+      <button class="btn btn-clear" onclick="clearTable()">
+        🗑 Clear
+      </button>
+      <a id="btnCsv" class="btn btn-csv" href="/live/download">
+        ⬇ CSV
+      </a>
+    </div>
+    <div class="toolbar-group" style="margin-left:auto;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="autoScrollChk" checked style="accent-color:var(--accent);">
+        Auto-scroll
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Filter chips ─────────────────────────────────────────────────── -->
+  <div class="filterbar">
+    <div class="filter-chips" id="filterChips">
+      <span class="chip chip-all  active" data-filter="ALL"  onclick="setFilter('ALL')">All</span>
+      <span class="chip chip-tcp"         data-filter="TCP"  onclick="setFilter('TCP')">TCP</span>
+      <span class="chip chip-udp"         data-filter="UDP"  onclick="setFilter('UDP')">UDP</span>
+      <span class="chip chip-icmp"        data-filter="ICMP" onclick="setFilter('ICMP')">ICMP</span>
+      <span class="chip chip-dns"         data-filter="DNS"  onclick="setFilter('DNS')">DNS</span>
+      <span class="chip chip-http"        data-filter="HTTP" onclick="setFilter('HTTP')">HTTP</span>
+      <span class="chip chip-https"       data-filter="HTTPS" onclick="setFilter('HTTPS')">HTTPS</span>
+      <span class="chip chip-arp"         data-filter="ARP"  onclick="setFilter('ARP')">ARP</span>
+      <span class="chip chip-susp"        data-filter="SUSPICIOUS" onclick="setFilter('SUSPICIOUS')">⚠ Suspicious</span>
+    </div>
+    <div class="filter-spacer"></div>
+    <span class="stat-pill">Captured: <span id="capCount">0</span></span>
+    <span class="stat-pill">Shown: <span id="shownCount">0</span></span>
+    <span class="stat-pill">⚠ Suspicious: <span id="suspCount">0</span></span>
+  </div>
+
+  <!-- ── Status bar ───────────────────────────────────────────────────── -->
+  <div class="statusbar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Waiting — configure interface and click Start.</span>
+  </div>
+
+  <!-- ── Packet table ─────────────────────────────────────────────────── -->
+  <div class="table-wrap" id="tableWrap">
+    <table class="pkt-table" id="pktTable">
+      <colgroup>
+        <col class="col-no">
+        <col class="col-time">
+        <col class="col-src">
+        <col class="col-dst">
+        <col class="col-proto">
+        <col class="col-len">
+        <col class="col-flags">
+        <col class="col-info">
+      </colgroup>
+      <thead>
+        <tr>
+          <th onclick="sortBy('no')">No. <span class="sort-icon" id="sh-no">↕</span></th>
+          <th onclick="sortBy('timestamp')">Time <span class="sort-icon" id="sh-timestamp">↕</span></th>
+          <th onclick="sortBy('src')">Source <span class="sort-icon" id="sh-src">↕</span></th>
+          <th onclick="sortBy('dst')">Destination <span class="sort-icon" id="sh-dst">↕</span></th>
+          <th onclick="sortBy('protocol')">Protocol <span class="sort-icon" id="sh-protocol">↕</span></th>
+          <th onclick="sortBy('length')">Length <span class="sort-icon" id="sh-length">↕</span></th>
+          <th>Flags</th>
+          <th>Info</th>
+        </tr>
+      </thead>
+      <tbody id="pktBody">
+        <tr><td colspan="8">
+          <div class="empty-state">
+            <div class="icon">📡</div>
+            <p>No packets captured yet. Click <strong>Start</strong> to begin live capture.</p>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Detail panel ─────────────────────────────────────────────────── -->
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-tabs">
+      <div class="dtab active" data-tab="overview" onclick="switchTab('overview')">Overview</div>
+      <div class="dtab"        data-tab="http"     onclick="switchTab('http')">HTTP</div>
+      <div class="dtab"        data-tab="hex"      onclick="switchTab('hex')">Hex Payload</div>
+    </div>
+    <div class="detail-content" id="detailContent">
+      <span class="detail-placeholder">Click any packet row to inspect its details.</span>
+    </div>
+  </div>
+
+
+  <!-- ── Credential Exposures Panel ──────────────────────────────────── -->
+  <div class="cred-panel" id="credPanel" style="display:none;">
+    <div class="cred-panel-head">
+      <span>🔑 Credential Exposures</span>
+      <span class="cred-count" id="credCount">0</span>
+    </div>
+    <div class="cred-table-wrap">
+      <table class="cred-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Source</th>
+            <th>Destination</th>
+            <th>Host</th>
+            <th>Path</th>
+            <th>Field</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody id="credBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /.main-layout -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════════════════
+const MAX_PACKETS  = 2000;   // max stored in memory
+const MAX_ROWS     = 500;    // max DOM rows (performance guard)
+
+let allPackets     = [];     // full ring-buffer of received packets
+let captureCount   = 0;
+let suspCount      = 0;
+let credCount      = 0;
+let activeFilter   = "ALL";
+let sortKey        = "no";
+let sortAsc        = true;
+let selectedRow    = null;
+let selectedPkt    = null;
+let activeTab      = "overview";
+let emptyRowShown  = true;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Socket.IO
+// ═══════════════════════════════════════════════════════════════════════════
+const socket = io({ transports: ["websocket","polling"], reconnectionAttempts: 5 });
+
+socket.on("connect", () => {
+  setStatus("Connected — ready to capture.", "idle");
+});
+socket.on("disconnect", () => {
+  setStatus("Disconnected from server.", "error");
+  setCapturing(false);
+});
+socket.on("connect_error", (err) => {
+  setStatus("Connection failed: " + err.message, "error");
+});
+
+socket.on("live_status", (data) => {
+  const msg = data.message || "";
+  const isError   = msg.includes("❌") || msg.toLowerCase().includes("error");
+  const isStopped = msg.toLowerCase().includes("stopped") || msg.toLowerCase().includes("complete");
+  if (isError) {
+    setStatus(msg, "error");
+    setCapturing(false);
+  } else if (isStopped) {
+    setStatus(msg, "idle");
+    setCapturing(false);
+  } else {
+    setStatus(msg, "running");
+  }
+  if (typeof data.captured === "number") {
+    captureCount = data.captured;
+    document.getElementById("capCount").textContent = captureCount;
+  }
+});
+
+socket.on("packet_data", (pkt) => {
+  handleIncomingPacket(pkt);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Packet handling
+// ═══════════════════════════════════════════════════════════════════════════
+function handleIncomingPacket(pkt) {
+  // Evict oldest if at capacity
+  if (allPackets.length >= MAX_PACKETS) {
+    allPackets.shift();
+  }
+  allPackets.push(pkt);
+
+  if (pkt.is_suspicious) {
+    suspCount++;
+    document.getElementById("suspCount").textContent = suspCount;
+  }
+
+  // Handle credential exposures
+  if (pkt.credentials && Object.keys(pkt.credentials).length > 0) {
+    appendCredRow(pkt);
+  }
+
+  if (matchesFilter(pkt)) {
+    appendRow(pkt);
+  }
+
+  // Update shown count
+  document.getElementById("shownCount").textContent =
+    document.getElementById("pktBody").querySelectorAll("tr.pkt-row").length;
+}
+
+function matchesFilter(pkt) {
+  // Protocol chip filter
+  if (activeFilter !== "ALL") {
+    if (activeFilter === "SUSPICIOUS") {
+      if (!pkt.is_suspicious) return false;
+    } else {
+      if ((pkt.protocol || "").toUpperCase() !== activeFilter) return false;
+    }
+  }
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DOM row rendering
+// ═══════════════════════════════════════════════════════════════════════════
+function appendRow(pkt) {
+  const tbody = document.getElementById("pktBody");
+
+  // Remove empty-state row
+  if (emptyRowShown) {
+    tbody.innerHTML = "";
+    emptyRowShown = false;
+  }
+
+  // Cap DOM rows
+  while (tbody.querySelectorAll("tr.pkt-row").length >= MAX_ROWS) {
+    const oldest = tbody.querySelector("tr.pkt-row");
+    if (oldest) tbody.removeChild(oldest);
+  }
+
+  const proto   = (pkt.protocol || "").toUpperCase();
+  const rowClass = pkt.is_suspicious ? "row-suspicious" : rowColorClass(proto);
+
+  const tr = document.createElement("tr");
+  tr.className = "pkt-row " + rowClass;
+  tr.dataset.idx = allPackets.length - 1;
+  tr.addEventListener("click", () => selectRow(tr, pkt));
+
+  const cells = [
+    pkt.no,
+    pkt.timestamp,
+    pkt.src,
+    pkt.dst,
+    `<span class="proto-badge ${protoBadgeClass(proto)}">${htmlEsc(pkt.protocol)}</span>`,
+    pkt.length,
+    pkt.flags
+      ? `<span style="font-size:10px;color:var(--text-muted)">${htmlEsc(pkt.flags)}</span>`
+      : "",
+    (pkt.is_suspicious ? `<span class="susp-icon">⚠</span>` : "") + htmlEsc(pkt.info || ""),
+  ];
+
+  cells.forEach((val, i) => {
+    const td = document.createElement("td");
+    td.innerHTML = String(val);
+    tr.appendChild(td);
+  });
+
+  tbody.appendChild(tr);
+
+  // Auto-scroll
+  const chk = document.getElementById("autoScrollChk");
+  if (chk && chk.checked) {
+    const wrap = document.getElementById("tableWrap");
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+}
+
+function rowColorClass(proto) {
+  const map = {
+    TCP:"row-tcp", UDP:"row-udp", ICMP:"row-icmp",
+    DNS:"row-dns", HTTP:"row-http", HTTPS:"row-https",
+    ARP:"row-arp",
+  };
+  return map[proto] || "";
+}
+
+function protoBadgeClass(proto) {
+  const map = {
+    TCP:"pb-tcp", UDP:"pb-udp", ICMP:"pb-icmp",
+    DNS:"pb-dns", HTTP:"pb-http", HTTPS:"pb-https",
+    ARP:"pb-arp", SSH:"pb-ssh", FTP:"pb-ftp",
+    RDP:"pb-rdp", SMTP:"pb-smtp",
+  };
+  return map[proto] || "pb-other";
+}
+
+function htmlEsc(s) {
+  return String(s || "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Filtering & re-render
+// ═══════════════════════════════════════════════════════════════════════════
+function setFilter(f) {
+  activeFilter = f;
+  document.querySelectorAll(".chip").forEach(c => {
+    c.classList.toggle("active", c.dataset.filter === f);
+  });
+  rebuildTable();
+}
+
+function applyFilters() {
+  rebuildTable();
+}
+
+function rebuildTable() {
+  const tbody = document.getElementById("pktBody");
+  tbody.innerHTML = "";
+  emptyRowShown = false;
+
+  const visible = allPackets.filter(matchesFilter);
+
+  if (visible.length === 0) {
+    emptyRowShown = true;
+    tbody.innerHTML = `<tr><td colspan="8">
+      <div class="empty-state" style="padding:30px">
+        <div class="icon">🔍</div>
+        <p>No packets match the current filter.</p>
+      </div></td></tr>`;
+    document.getElementById("shownCount").textContent = 0;
+    return;
+  }
+
+  // Show last MAX_ROWS
+  const slice = visible.slice(-MAX_ROWS);
+  slice.forEach(pkt => appendRowDirect(pkt));
+  document.getElementById("shownCount").textContent = visible.length;
+}
+
+// Like appendRow but doesn't do cap/autoscroll logic (for bulk rebuild)
+function appendRowDirect(pkt) {
+  const tbody = document.getElementById("pktBody");
+  const proto   = (pkt.protocol || "").toUpperCase();
+  const rowClass = pkt.is_suspicious ? "row-suspicious" : rowColorClass(proto);
+  const tr = document.createElement("tr");
+  tr.className = "pkt-row " + rowClass;
+  tr.addEventListener("click", () => selectRow(tr, pkt));
+
+  const cells = [
+    pkt.no, pkt.timestamp, pkt.src, pkt.dst,
+    `<span class="proto-badge ${protoBadgeClass(proto)}">${htmlEsc(pkt.protocol)}</span>`,
+    pkt.length,
+    pkt.flags ? `<span style="font-size:10px;color:var(--text-muted)">${htmlEsc(pkt.flags)}</span>` : "",
+    (pkt.is_suspicious ? `<span class="susp-icon">⚠</span>` : "") + htmlEsc(pkt.info || ""),
+  ];
+  cells.forEach(val => {
+    const td = document.createElement("td");
+    td.innerHTML = String(val);
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Row selection & detail panel
+// ═══════════════════════════════════════════════════════════════════════════
+function selectRow(tr, pkt) {
+  if (selectedRow) selectedRow.classList.remove("selected");
+  selectedRow = tr;
+  selectedPkt = pkt;
+  tr.classList.add("selected");
+  renderDetail(pkt);
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".dtab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === tab);
+  });
+  if (selectedPkt) renderDetail(selectedPkt);
+}
+
+function renderDetail(pkt) {
+  const el = document.getElementById("detailContent");
+
+  if (activeTab === "overview") {
+    const rows = [
+      ["Packet #",        pkt.no],
+      ["Timestamp",       pkt.timestamp],
+      ["Source",          pkt.src,     "highlight"],
+      ["Destination",     pkt.dst,     "highlight"],
+      ["Protocol",        pkt.protocol],
+      ["Length",          pkt.length + " bytes"],
+      ["TTL",             pkt.ttl || "—"],
+      ["TCP Flags",       pkt.flags || "—"],
+      ["Info",            pkt.info],
+      ["Suspicious",      pkt.is_suspicious ? "YES ⚠" : "No",
+                          pkt.is_suspicious ? "suspicious" : "green"],
+    ];
+    el.innerHTML = `<div class="detail-grid">` +
+      rows.map(r => `<span class="dk">${htmlEsc(r[0])}</span>
+        <span class="dv ${r[2]||''}">${htmlEsc(String(r[1]||"—"))}</span>`).join("") +
+      `</div>`;
+  } else if (activeTab === "http") {
+    if (pkt.http_method || pkt.http_host || pkt.http_status) {
+      const rows = [
+        ["Method",  pkt.http_method  || "—", "highlight"],
+        ["Host",    pkt.http_host    || "—", "highlight"],
+        ["Path",    pkt.http_path    || "—", "highlight"],
+        ["Status",  pkt.http_status  || "—", "highlight"],
+      ];
+      // FIX BUG-07: show captured credentials in HTTP detail tab
+      if (pkt.credentials && Object.keys(pkt.credentials).length > 0) {
+        rows.push(["", "", ""]);  // spacer
+        rows.push(["⚠ CREDENTIALS CAPTURED", "", ""]);
+        Object.entries(pkt.credentials).forEach(([k,v]) => {
+          rows.push([k, v, "suspicious"]);
+        });
+      }
+      el.innerHTML = `<div class="detail-grid">` +
+        rows.map(r => {
+          if (r[0] === "" && r[1] === "") return `<span></span><span></span>`;
+          if (r[1] === "" && r[2] === "") {
+            return `<span class="dk" style="color:var(--red);grid-column:1/-1;padding:4px 0;font-weight:700">${htmlEsc(r[0])}</span><span></span>`;
+          }
+          return `<span class="dk">${htmlEsc(r[0])}</span><span class="dv ${r[2]}">${htmlEsc(r[1])}</span>`;
+        }).join("") +
+        `</div>`;
+    } else {
+      el.innerHTML = `<span class="detail-placeholder">No HTTP data found in this packet.</span>`;
+    }
+  } else if (activeTab === "hex") {
+    if (pkt.payload_hex && pkt.payload_hex.length > 0) {
+      const hex  = pkt.payload_hex;
+      const pairs = hex.match(/.{1,2}/g) || [];
+      let hexStr = "", ascStr = "";
+      pairs.forEach((b,i) => {
+        hexStr += b + " ";
+        const n = parseInt(b, 16);
+        ascStr += (n >= 32 && n <= 126) ? String.fromCharCode(n) : ".";
+        if ((i+1) % 16 === 0) { hexStr += "  "; }
+      });
+      el.innerHTML = `<div class="hex-view">${htmlEsc("Hex:  " + hexStr.trim())}\n${htmlEsc("ASCII: " + ascStr)}</div>`;
+    } else {
+      el.innerHTML = `<span class="detail-placeholder">No raw payload captured for this packet.</span>`;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Controls
+// ═══════════════════════════════════════════════════════════════════════════
+function startCapture() {
+  const iface = document.getElementById("ifaceInput").value.trim();
+  const count = parseInt(document.getElementById("countInput").value) || 0;
+
+  clearTable();
+  setStatus("Starting capture…", "running");
+  setCapturing(true);
+
+  fetch("/live/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "interface=" + encodeURIComponent(iface) + "&packet_count=" + count
+  })
+  .then(res => res.json())
+  .then(json => {
+    if (json.status !== "ok") {
+      setStatus("Error: " + json.message, "error");
+      setCapturing(false);
+    }
+  })
+  .catch(err => {
+    setStatus("Network error: " + err.message, "error");
+    setCapturing(false);
+  });
+}
+
+function stopCapture() {
+  // Immediately update UI so button feels responsive — don't wait for fetch
+  setCapturing(false);
+  setStatus("Stopping…", "idle");
+  fetch("/live/stop", { method: "POST" })
+  .catch(() => {});   // fire-and-forget; UI already updated above
+}
+
+function appendCredRow(pkt) {
+  const panel = document.getElementById("credPanel");
+  const tbody = document.getElementById("credBody");
+  const creds = pkt.credentials || {};
+  Object.entries(creds).forEach(([field, value]) => {
+    credCount++;
+    document.getElementById("credCount").textContent = credCount;
+    panel.style.display = "flex";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${htmlEsc(pkt.timestamp || "")}</td>` +
+      `<td>${htmlEsc(pkt.src || "")}</td>` +
+      `<td>${htmlEsc(pkt.dst || "")}</td>` +
+      `<td>${htmlEsc(pkt.http_host || "—")}</td>` +
+      `<td>${htmlEsc(pkt.http_path || "—")}</td>` +
+      `<td>${htmlEsc(field)}</td>` +
+      `<td class="cred-val">${htmlEsc(value)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function clearTable() {
+  allPackets    = [];
+  suspCount     = 0;
+  credCount     = 0;
+  emptyRowShown = true;
+  document.getElementById("shownCount").textContent = 0;
+  document.getElementById("suspCount").textContent  = 0;
+  document.getElementById("credCount").textContent  = 0;
+  document.getElementById("credBody").innerHTML     = "";
+  document.getElementById("credPanel").style.display = "none";
+  const tbody = document.getElementById("pktBody");
+  tbody.innerHTML = `<tr><td colspan="8">
+    <div class="empty-state">
+      <div class="icon">📡</div>
+      <p>Table cleared. Capture is still running if active.</p>
+    </div></td></tr>`;
+  document.getElementById("detailContent").innerHTML =
+    `<span class="detail-placeholder">Click any packet row to inspect its details.</span>`;
+  selectedRow = null;
+  selectedPkt = null;
+}
+
+function setCapturing(on) {
+  // FIX BUG-04: disable interface/count inputs while capturing
+  document.getElementById("btnStart").disabled   = on;
+  document.getElementById("btnStop").disabled    = !on;
+  document.getElementById("ifaceInput").disabled = on;
+  document.getElementById("countInput").disabled = on;
+}
+
+function setStatus(msg, type) {
+  document.getElementById("statusText").textContent = msg;
+  const dot = document.getElementById("statusDot");
+  dot.className = "status-dot" + (type === "running" ? " running" : type === "error" ? " error" : "");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Sorting (client-side on visible rows)
+// ═══════════════════════════════════════════════════════════════════════════
+function sortBy(key) {
+  if (sortKey === key) { sortAsc = !sortAsc; }
+  else { sortKey = key; sortAsc = true; }
+
+  // Update icons
+  document.querySelectorAll("th").forEach(th => th.classList.remove("sort-active"));
+  const icon = document.getElementById("sh-" + key);
+  if (icon) {
+    icon.textContent = sortAsc ? "↑" : "↓";
+    icon.closest("th").classList.add("sort-active");
+  }
+
+  allPackets.sort((a, b) => {
+    let av = a[key] ?? "", bv = b[key] ?? "";
+    if (typeof av === "number" && typeof bv === "number") {
+      return sortAsc ? av - bv : bv - av;
+    }
+    av = String(av); bv = String(bv);
+    return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+
+  rebuildTable();
+}
+</script>
+</body>
+</html>

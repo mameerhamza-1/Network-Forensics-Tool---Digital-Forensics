@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Forensic PDF Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #111; }
+        h1, h2 { color: #1d4ed8; }
+        table { width:100%; border-collapse:collapse; margin-top:10px; }
+        th, td { border:1px solid #999; padding:6px; text-align:left; }
+        th { background:#e5e7eb; }
+    </style>
+</head>
+<body>
+    <h1>Network Forensic Report</h1>
+    <p><strong>Source:</strong> {{ source_name }}</p>
+    <p><strong>Generated At:</strong> {{ generated_at }}</p>
+    <h2>Summary</h2>
+    <ul>
+        <li>Total Events: {{ summary.total_events }}</li>
+        <li>Total Detections: {{ summary.total_detections }}</li>
+        <li>Total Sessions: {{ summary.total_sessions }}</li>
+        <li>Total Attackers: {{ summary.total_attackers }}</li>
+        <li>Credential Exposures: {{ summary.credential_exposures }}</li>
+    </ul>
+    <h2>Detected Attacks</h2>
+    <table>
+        <tr><th>Attack</th><th>Source IP</th><th>Destination IP</th><th>Risk</th></tr>
+        {% for attack in attacks %}
+        <tr>
+            <td>{{ attack.get('attack_type', 'N/A') }}</td>
+            <td>{{ attack.get('src_ip', 'N/A') }}</td>
+            <td>{{ attack.get('dst_ip', 'N/A') }}</td>
+            <td>{{ attack.get('risk_score', 'N/A') }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
