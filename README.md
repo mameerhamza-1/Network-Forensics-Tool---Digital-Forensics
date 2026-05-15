@@ -27,7 +27,7 @@ Use Python 3.12 on Windows.
 
 ## Commands
 ```powershell
-cd C:\Users\Hamza\Downloads\project\network_forensics_platform_fixed
+
 py -3.12 -m venv .venv312
 .\.venv312\Scripts\activate
 python -m pip install --upgrade pip
